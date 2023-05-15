@@ -1,9 +1,11 @@
 # Gui.py
 
-from PyQt5.QtWidgets import QApplication, QMainWindow, QPushButton, QVBoxLayout, QWidget, QTextEdit, QLineEdit, QLabel, QDialog
+from PyQt5.QtWidgets import QApplication, QMainWindow, QPushButton, QVBoxLayout, QWidget, QTextEdit, QLineEdit, QLabel, QDialog, QMessageBox
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 import requests
 import sys
+import traceback
+
 
 class NetworkThread(QThread):
     message_received = pyqtSignal(dict)
@@ -16,24 +18,31 @@ class NetworkThread(QThread):
     def run(self):
         last_message_id = 0
         while not self.isInterruptionRequested():
-            response = requests.get(f'{self.server_url}/messages/{last_message_id}')
-            if response.status_code == 200:
-                messages = response.json().get('messages')
-                for message in messages:
-                    self.message_received.emit(message)
-                    last_message_id = message['id']
-            user_count, message_count = self.get_status()
-            self.status_updated.emit(user_count, message_count)
-            self.msleep(5000)  # Sleep for 5 seconds between requests
+            try:
+                response = requests.get(f'{self.server_url}/messages/{last_message_id}')
+                if response.status_code == 200:
+                    messages = response.json().get('messages')
+                    for message in messages:
+                        self.message_received.emit(message)
+                        last_message_id = message['id']
+                user_count, message_count = self.get_status()
+                self.status_updated.emit(user_count, message_count)
+                self.msleep(5000)  # Sleep for 5 seconds between requests
+            except requests.exceptions.RequestException as e:
+                print(f"Network request failed: {e}")
 
     def get_status(self):
-        response = requests.get(f'{self.server_url}/status')
-        if response.status_code == 200:
-            status = response.json()
-            user_count = status.get('user_count', 0)
-            message_count = status.get('message_count', 0)
-            return user_count, message_count
+        try:
+            response = requests.get(f'{self.server_url}/status')
+            if response.status_code == 200:
+                status = response.json()
+                user_count = status.get('user_count', 0)
+                message_count = status.get('message_count', 0)
+                return user_count, message_count
+        except requests.exceptions.RequestException as e:
+            print(f"Network request failed: {e}")
         return 0, 0
+
 
 class AdminLoginDialog(QDialog):
     def __init__(self, parent=None):
@@ -57,6 +66,7 @@ class AdminLoginDialog(QDialog):
     def login(self):
         password = self.password_input.text()
         self.accept()
+
 
 class MessengerGUI(QMainWindow):
     def __init__(self):
@@ -94,21 +104,15 @@ class MessengerGUI(QMainWindow):
                 font-size: 12px;
             }
             QLineEdit {
-                background-color: #ffffff;
-                border: 1px solid #d0d0d0;
-                padding: 2px 5px;
-                font-size: 12px;
-            }
-            QPushButton {
-                background-color: #ffffff;
-                border: 1px solid #d0d0d0;
-                padding: 5px;
-                font-size: 12px;
-            }
-            QLabel {
-                font-size: 12px;
-            }
-        ''')
+    background-color: #ffffff;
+    border: 1px solid #d0d0d0;
+    padding: 5px;
+    font-size: 12px;
+}
+QLabel {
+    font-size: 12px;
+}
+''')
 
         # Create a layout and add widgets
         layout = QVBoxLayout()
@@ -144,10 +148,13 @@ class MessengerGUI(QMainWindow):
 
     def send_message(self):
         message = self.input_field.text()
-        response = requests.post(f'{self.server_url}/message', data={'message': message})
-        if response.status_code == 200:
-            message_id = response.json().get('id')
-            return message_id
+        try:
+            response = requests.post(f'{self.server_url}/message', data={'message': message})
+            if response.status_code == 200:
+                message_id = response.json().get('id')
+                return message_id
+        except requests.exceptions.RequestException as e:
+            print(f"Network request failed: {e}")
         return None
 
     def display_message(self, message):
@@ -158,19 +165,11 @@ class MessengerGUI(QMainWindow):
         self.user_count_label.setText(f'Users Online: {user_count}')
         self.message_count_label.setText(f'Messages Sent: {message_count}')
 
-    from PyQt5.QtWidgets import QMessageBox
-
-    # ...
-
-    import traceback
-
-    # ...
-
     def open_admin_login(self):
         try:
             dialog = AdminLoginDialog(self)
             if dialog.exec_() == QDialog.Accepted:
-                password = dialog.result()
+                password = dialog.password_input.text()
                 if password == 'feadole':
                     self.admin_actions()
                 else:
@@ -191,6 +190,5 @@ if __name__ == '__main__':
         messenger.show()
         sys.exit(app.exec_())
     except Exception as e:
-        import traceback
         print(traceback.format_exc())
 
